@@ -37,7 +37,6 @@ index 5d5a426aa495..89c73e69b827 100644
 +
  /* Maximum number of mounts in a mount namespace */
  unsigned int sysctl_mount_max __read_mostly = 100000;
-
 @@ -3879,8 +3879,14 @@
 	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
 	if (user_ns != ns->user_ns)
