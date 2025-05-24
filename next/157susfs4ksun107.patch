@@ -1,6 +1,6 @@
 diff -ruN old/apk_sign.c new/apk_sign.c
---- old/apk_sign.c	2025-05-23 18:33:09.862853200 +0200
-+++ new/apk_sign.c	2025-05-22 22:38:41.888683500 +0200
+--- old/apk_sign.c	2025-05-24 13:48:52.284874900 +0200
++++ new/apk_sign.c	2025-05-24 13:55:12.420480900 +0200
 @@ -314,7 +314,7 @@
  
  #endif
@@ -12,38 +12,9 @@ diff -ruN old/apk_sign.c new/apk_sign.c
  }
 \ No newline at end of file
 diff -ruN old/core_hook.c new/core_hook.c
---- old/core_hook.c	2025-05-23 18:35:02.292828400 +0200
-+++ new/core_hook.c	2025-05-22 23:31:58.307461400 +0200
-@@ -7,9 +7,7 @@
- #include <linux/kallsyms.h>
- #include <linux/kernel.h>
- #include <linux/kprobes.h>
--#ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
- #include <linux/lsm_hooks.h>
--#endif
- #include <linux/mm.h>
- #include <linux/nsproxy.h>
- #include <linux/path.h>
-@@ -413,18 +411,6 @@
- 		return 0;
- 	}
- 
--	if (arg2 == CMD_HOOK_MODE) {
--#ifdef CONFIG_KSU_KPROBES_HOOK
--		const char *mode = "Kprobes";
--#else
--		const char *mode = "Manual";
--#endif
--		if (copy_to_user((void __user *)arg3, mode, strlen(mode) + 1)) {
--			pr_info("hook: copy_to_user() failed\n");
--		}
--		return 0;
--	}
--
- 	if (arg2 == CMD_REPORT_EVENT) {
- 		if (!from_root) {
- 			return 0;
-@@ -1011,12 +997,42 @@
+--- old/core_hook.c	2025-05-24 13:49:42.869353800 +0200
++++ new/core_hook.c	2025-05-24 14:23:37.277449460 +0200
+@@ -1011,12 +1011,43 @@
  		return;
  	}
  
@@ -83,10 +54,11 @@ diff -ruN old/core_hook.c new/core_hook.c
 +	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH, uid);
 +}
 +#endif
++
  int ksu_handle_setuid(struct cred *new, const struct cred *old)
  {
  	// this hook is used for umounting overlayfs for some uid, if there isn't any module mounted, just ignore it!
-@@ -1095,25 +1111,29 @@
+@@ -1095,26 +1126,30 @@
  		current->pid);
  #endif
  
@@ -102,10 +74,11 @@ diff -ruN old/core_hook.c new/core_hook.c
 -	try_umount("/vendor", true, 0);
 -	try_umount("/product", true, 0);
 -	try_umount("/data/adb/modules", false, MNT_DETACH);
++	ksu_try_umount("/odm", true, 0);
 +	ksu_try_umount("/system", true, 0);
++	ksu_try_umount("/system_ext", true, 0);
 +	ksu_try_umount("/vendor", true, 0);
 +	ksu_try_umount("/product", true, 0);
-+	ksu_try_umount("/system_ext", true, 0);
 +	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
  
  	// try umount ksu temp path
@@ -121,95 +94,29 @@ diff -ruN old/core_hook.c new/core_hook.c
  	// try umount lsposed dex2oat bins
 -	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
 -	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
+-
 +	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
 +	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
 +#endif
- 
- 	return 0;
- }
-@@ -1187,9 +1207,15 @@
  	return 0;
  }
  
--// kernel 4.9 and older
-+static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
-+			  unsigned long arg4, unsigned long arg5)
-+{
-+	ksu_handle_prctl(option, arg2, arg3, arg4, arg5);
-+	return -ENOSYS;
-+}
-+// kernel 4.4 and 4.9
- #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI) || defined(CONFIG_KSU_ALLOWLIST_WORKAROUND)
--int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
-+static int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
- 			      unsigned perm)
- {
- 	if (init_session_keyring != NULL) {
-@@ -1204,15 +1230,6 @@
- 	return 0;
- }
- #endif
--
--#ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
--static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
--			  unsigned long arg4, unsigned long arg5)
--{
--	ksu_handle_prctl(option, arg2, arg3, arg4, arg5);
--	return -ENOSYS;
--}
--
- static int ksu_inode_rename(struct inode *old_inode, struct dentry *old_dentry,
- 			    struct inode *new_inode, struct dentry *new_dentry)
- {
-@@ -1411,21 +1428,16 @@
- 	}
- 	smp_mb();
- }
--#endif // MODULE
--#endif // CONFIG_KSU_LSM_SECURITY_HOOKS
-+#endif
- 
- void __init ksu_core_init(void)
- {
--#ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
- 	ksu_lsm_hook_init();
--#else	
--	pr_info("ksu_core_init: LSM hooks not in use.\n");
--#endif
- }
- 
- void ksu_core_exit(void)
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	pr_info("ksu_core_kprobe_exit\n");
- 	// we dont use this now
- 	// ksu_kprobe_exit();
 diff -ruN old/ksud.c new/ksud.c
---- old/ksud.c	2025-05-23 18:35:02.292828400 +0200
-+++ new/ksud.c	2025-05-22 22:35:52.419756000 +0200
-@@ -54,7 +54,7 @@
- static void stop_execve_hook();
- static void stop_input_hook();
- 
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- static struct work_struct stop_vfs_read_work;
- static struct work_struct stop_execve_hook_work;
- static struct work_struct stop_input_hook_work;
-@@ -65,21 +65,21 @@
+--- old/ksud.c	2025-05-24 13:49:42.869353800 +0200
++++ new/ksud.c	2025-05-24 14:01:27.556217400 +0200
+@@ -64,6 +64,9 @@
+ bool ksu_execveat_hook __read_mostly = true;
  bool ksu_input_hook __read_mostly = true;
  
- 
--u32 ksu_devpts_sid;
 +#ifdef CONFIG_KSU_SUSFS_SUS_SU
 +bool susfs_is_sus_su_ready = false;
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_SU
  
--#ifdef CONFIG_COMPAT
--bool ksu_is_compat __read_mostly = false;
--#endif
-+u32 ksu_devpts_sid;
+ u32 ksu_devpts_sid;
+ 
+@@ -71,15 +74,15 @@
+ bool ksu_is_compat __read_mostly = false;
+ #endif
  
 -void on_post_fs_data(void)
 +void ksu_on_post_fs_data(void)
@@ -226,98 +133,9 @@ diff -ruN old/ksud.c new/ksud.c
  	ksu_load_allow_list();
  	// sanity check, this may influence the performance
  	stop_input_hook();
-@@ -112,7 +112,6 @@
- 		if (get_user(compat, argv.ptr.compat + nr))
- 			return ERR_PTR(-EFAULT);
- 
--		ksu_is_compat = true;
- 		return compat_ptr(compat);
- 	}
- #endif
-@@ -163,7 +162,7 @@
- 			     struct user_arg_ptr *argv,
- 			     struct user_arg_ptr *envp, int *flags)
- {
--#ifndef CONFIG_KSU_KPROBES_HOOK
-+#ifndef CONFIG_KSU_WITH_KPROBES
- 	if (!ksu_execveat_hook) {
- 		return 0;
- 	}
-@@ -319,7 +318,7 @@
- int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr,
- 			size_t *count_ptr, loff_t **pos)
- {
--#ifndef CONFIG_KSU_KPROBES_HOOK
-+#ifndef CONFIG_KSU_WITH_KPROBES
- 	if (!ksu_vfs_read_hook) {
- 		return 0;
- 	}
-@@ -432,7 +431,7 @@
- int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code,
- 				  int *value)
- {
--#ifndef CONFIG_KSU_KPROBES_HOOK
-+#ifndef CONFIG_KSU_WITH_KPROBES
- 	if (!ksu_input_hook) {
- 		return 0;
- 	}
-@@ -504,7 +503,7 @@
- 	return ksu_handle_execveat_ksud(AT_FDCWD, &filename_p, &argv, NULL, NULL);
- }
- 
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 
- // https://elixir.bootlin.com/linux/v5.10.158/source/fs/exec.c#L1864
- static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
-@@ -634,7 +633,7 @@
- 
- static void stop_vfs_read_hook()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	bool ret = schedule_work(&stop_vfs_read_work);
- 	pr_info("unregister vfs_read kprobe: %d!\n", ret);
- #else
-@@ -645,7 +644,7 @@
- 
- static void stop_execve_hook()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	bool ret = schedule_work(&stop_execve_hook_work);
- 	pr_info("unregister execve kprobe: %d!\n", ret);
- #else
-@@ -660,7 +659,7 @@
- 
- static void stop_input_hook()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	static bool input_hook_stopped = false;
- 	if (input_hook_stopped) {
- 		return;
-@@ -678,7 +677,7 @@
- // ksud: module support
- void ksu_ksud_init()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	int ret;
- 
- 	ret = register_kprobe(&execve_kp);
-@@ -698,7 +697,7 @@
- 
- void ksu_ksud_exit()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	unregister_kprobe(&execve_kp);
- 	// this should be done before unregister vfs_read_kp
- 	// unregister_kprobe(&vfs_read_kp);
 diff -ruN old/selinux/selinux.c new/selinux/selinux.c
---- old/selinux/selinux.c	2025-05-23 18:35:02.292828400 +0200
-+++ new/selinux/selinux.c	2025-05-22 23:13:47.012674100 +0200
+--- old/selinux/selinux.c	2025-05-24 13:49:42.869353800 +0200
++++ new/selinux/selinux.c	2025-05-24 14:02:29.606091700 +0200
 @@ -60,7 +60,7 @@
  }*/
  }
@@ -336,160 +154,28 @@ diff -ruN old/selinux/selinux.c new/selinux/selinux.c
  {
  #ifdef CONFIG_SECURITY_SELINUX_DISABLE
  #ifdef KSU_COMPAT_USE_SELINUX_STATE
+diff -ruN old/setup.sh new/setup.sh
+--- old/setup.sh	2025-05-24 13:48:52.306541500 +0200
++++ new/setup.sh	2025-05-24 14:04:52.563152500 +0200
+@@ -43,7 +43,7 @@
+     cd "$GKI_ROOT/KernelSU-Next"
+     git stash && echo "[-] Stashed current changes."
+     if [ "$(git status | grep -Po 'v\d+(\.\d+)*' | head -n1)" ]; then
+-        git checkout next && echo "[-] Switched to next branch."
++        git checkout next-susfs-dev && echo "[-] Switched to next-susfs-dev branch."
+     fi
+     git pull && echo "[+] Repository updated."
+     if [ -z "${1-}" ]; then
 diff -ruN old/sucompat.c new/sucompat.c
---- old/sucompat.c	2025-05-23 18:35:02.292828400 +0200
-+++ new/sucompat.c	2025-05-22 23:20:22.778113900 +0200
-@@ -13,7 +13,9 @@
+--- old/sucompat.c	2025-05-24 13:49:42.869353800 +0200
++++ new/sucompat.c	2025-05-24 14:03:44.477268000 +0200
+@@ -13,6 +13,9 @@
  #else
  #include <linux/sched.h>
  #endif
--
 +#ifdef CONFIG_KSU_SUSFS_SUS_SU
 +#include <linux/susfs_def.h>
 +#endif
+ 
  #include "objsec.h"
  #include "allowlist.h"
- #include "arch.h"
-@@ -24,9 +26,11 @@
- #define SU_PATH "/system/bin/su"
- #define SH_PATH "/system/bin/sh"
- 
--#ifndef CONFIG_KSU_KPROBES_HOOK
--static bool ksu_sucompat_non_kp __read_mostly = true;
--#endif
-+bool ksu_faccessat_hook __read_mostly = true;
-+bool ksu_stat_hook __read_mostly = true;
-+bool ksu_execve_sucompat_hook __read_mostly = true;
-+bool ksu_execveat_sucompat_hook __read_mostly = true;
-+bool ksu_devpts_hook __read_mostly = true;
- 
- extern void ksu_escape_to_root();
- 
-@@ -58,8 +62,8 @@
- {
- 	const char su[] = SU_PATH;
- 
--#ifndef CONFIG_KSU_KPROBES_HOOK
--	if (!ksu_sucompat_non_kp) {
-+#ifndef CONFIG_KSU_WITH_KPROBES
-+	if (!ksu_faccessat_hook) {
- 		return 0;
- 	}
- #endif
-@@ -110,8 +114,8 @@
- 	// const char sh[] = SH_PATH;
- 	const char su[] = SU_PATH;
- 
--#ifndef CONFIG_KSU_KPROBES_HOOK
--	if (!ksu_sucompat_non_kp){
-+#ifndef CONFIG_KSU_WITH_KPROBES
-+	if (!ksu_stat_hook){
- 		return 0;
- 	}
- #endif
-@@ -160,8 +164,8 @@
- 	const char sh[] = KSUD_PATH;
- 	const char su[] = SU_PATH;
- 
--#ifndef CONFIG_KSU_KPROBES_HOOK
--	if (!ksu_sucompat_non_kp) {
-+#ifndef CONFIG_KSU_WITH_KPROBES
-+	if (!ksu_execveat_sucompat_hook) {
- 		return 0;
- 	}
- #endif
-@@ -195,8 +199,8 @@
- 	const char su[] = SU_PATH;
- 	char path[sizeof(su) + 1];
- 
--#ifndef CONFIG_KSU_KPROBES_HOOK
--	if (!ksu_sucompat_non_kp) {
-+#ifndef CONFIG_KSU_WITH_KPROBES
-+	if (!ksu_execve_sucompat_hook) {
- 		return 0;
- 	}
- #endif
-@@ -204,23 +208,8 @@
- 	if (unlikely(!filename_user))
- 		return 0;
- 
--	// nofault variant fails probably due to pagefault_disable
--	// some cpus dont really have that good speculative execution
--	// substitute set_fs, check if pointer is valid
--#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
--	if (!access_ok(VERIFY_READ, *filename_user, sizeof(path)))
--		return 0;
--#else
--	if (!access_ok(*filename_user, sizeof(path)))
--		return 0;
--#endif
--	// success = returns number of bytes and should be less than path
--	long len = strncpy_from_user(path, *filename_user, sizeof(path));
--	if (len <= 0 || len > sizeof(path))
--		return 0;
--
--	// strncpy_from_user_nofault does this too
--	path[sizeof(path) - 1] = '\0';
-+	memset(path, 0, sizeof(path));
-+	ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
- 
- 	if (likely(memcmp(path, su, sizeof(su))))
- 		return 0;
-@@ -238,8 +227,8 @@
- 
- int ksu_handle_devpts(struct inode *inode)
- {
--#ifndef CONFIG_KSU_KPROBES_HOOK
--	if (!ksu_sucompat_non_kp) {
-+#ifndef CONFIG_KSU_WITH_KPROBES
-+	if (!ksu_devpts_hook) {
- 		return 0;
- 	}
- #endif
-@@ -272,7 +261,7 @@
- 	return 0;
- }
- 
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 
- static int faccessat_handler_pre(struct kprobe *p, struct pt_regs *regs)
- {
-@@ -355,25 +344,33 @@
- // sucompat: permited process can execute 'su' to gain root access.
- void ksu_sucompat_init()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	su_kps[0] = init_kprobe(SYS_EXECVE_SYMBOL, execve_handler_pre);
- 	su_kps[1] = init_kprobe(SYS_FACCESSAT_SYMBOL, faccessat_handler_pre);
- 	su_kps[2] = init_kprobe(SYS_NEWFSTATAT_SYMBOL, newfstatat_handler_pre);
- 	su_kps[3] = init_kprobe("pts_unix98_lookup", pts_unix98_lookup_pre);
- #else
--	ksu_sucompat_non_kp = true;
-+	ksu_faccessat_hook = true;
-+	ksu_stat_hook = true;
-+	ksu_execve_sucompat_hook = true;
-+	ksu_execveat_sucompat_hook = true;
-+	ksu_devpts_hook = true;
- 	pr_info("ksu_sucompat_init: hooks enabled: execve/execveat_su, faccessat, stat, devpts\n");
- #endif
- }
- 
- void ksu_sucompat_exit()
- {
--#ifdef CONFIG_KSU_KPROBES_HOOK
-+#ifdef CONFIG_KSU_WITH_KPROBES
- 	for (int i = 0; i < ARRAY_SIZE(su_kps); i++) {
- 		destroy_kprobe(&su_kps[i]);
- 	}
- #else
--	ksu_sucompat_non_kp = false;
-+	ksu_faccessat_hook = false;
-+	ksu_stat_hook = false;
-+	ksu_execve_sucompat_hook = false;
-+	ksu_execveat_sucompat_hook = false;
-+	ksu_devpts_hook = false;
- 	pr_info("ksu_sucompat_exit: hooks disabled: execve/execveat_su, faccessat, stat, devpts\n");
- #endif
- }
